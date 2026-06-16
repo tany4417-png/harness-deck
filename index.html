@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AIに「会社」をやらせる ― Claude Code 実践ガイド</title>
+<style>
+  :root{
+    --bg:#0a0a12; --bg2:#150f24;
+    --pur:#a855f7; --pur2:#8b5cf6; --pink:#f472b6; --pink2:#ec4899; --cyan:#22d3ee;
+    --ink:#f5f5f7; --sub:#b6b6cc; --card:#171327; --card2:#1d1733; --line:#2c2546;
+    --maxw:1000px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:-apple-system,"Segoe UI","Yu Gothic UI","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.75;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 clamp(18px,5vw,40px)}
+  .grad{background:linear-gradient(95deg,var(--pur),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* ===== 固定ヘッダー＋進捗バー ===== */
+  header{
+    position:fixed;top:0;left:0;right:0;z-index:50;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:10px clamp(14px,4vw,28px);
+    background:rgba(10,10,18,.72);backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line);
+  }
+  header .ttl{font-size:clamp(.8rem,2.6vw,.98rem);font-weight:700;letter-spacing:.02em}
+  header .ttl b{font-weight:800}
+  .notebtn{
+    border:1px solid var(--line);background:var(--card);color:var(--sub);
+    font:inherit;font-size:.8rem;font-weight:700;padding:7px 12px;border-radius:999px;cursor:pointer;
+    white-space:nowrap;transition:.25s;
+  }
+  .notebtn:hover{border-color:var(--pur);color:var(--ink)}
+  body.notes .notebtn{background:linear-gradient(95deg,var(--pur),var(--pink));color:#fff;border-color:transparent}
+  #bar{position:fixed;top:0;left:0;height:3px;width:0;z-index:60;
+    background:linear-gradient(90deg,var(--pur),var(--pink),var(--cyan));box-shadow:0 0 12px var(--pur)}
+
+  /* ===== セクション共通 ===== */
+  section{padding:clamp(3rem,9vw,6rem) 0;position:relative}
+  .kicker{display:inline-block;font-size:.78rem;font-weight:800;letter-spacing:.18em;
+    color:var(--pink);text-transform:uppercase;margin-bottom:14px}
+  h2{font-size:clamp(1.55rem,5vw,2.7rem);font-weight:800;line-height:1.3;letter-spacing:-.01em;margin-bottom:10px}
+  h3{font-size:clamp(1.1rem,3vw,1.35rem);font-weight:700;margin-bottom:6px}
+  .lead{font-size:clamp(1rem,2.6vw,1.18rem);color:var(--sub);max-width:42em}
+  p{font-size:clamp(1rem,2.5vw,1.1rem)}
+
+  /* ===== スクロールリビール ===== */
+  .reveal{opacity:0;transform:translateY(30px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+  .stagger>*{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+  .stagger.in>*{opacity:1;transform:none}
+  .stagger.in>*:nth-child(1){transition-delay:.05s}
+  .stagger.in>*:nth-child(2){transition-delay:.15s}
+  .stagger.in>*:nth-child(3){transition-delay:.25s}
+  .stagger.in>*:nth-child(4){transition-delay:.35s}
+  .stagger.in>*:nth-child(5){transition-delay:.45s}
+  .stagger.in>*:nth-child(6){transition-delay:.55s}
+
+  /* ===== ヒーロー ===== */
+  .hero{min-height:100svh;display:flex;flex-direction:column;justify-content:center;
+    position:relative;overflow:hidden;padding-top:60px}
+  .blob{position:absolute;border-radius:50%;filter:blur(70px);opacity:.55;z-index:0;animation:float 14s ease-in-out infinite}
+  .blob.b1{width:46vw;height:46vw;background:var(--pur);top:-8%;left:-10%}
+  .blob.b2{width:40vw;height:40vw;background:var(--pink);bottom:-12%;right:-8%;animation-delay:-5s}
+  .blob.b3{width:30vw;height:30vw;background:var(--cyan);top:40%;left:55%;opacity:.3;animation-delay:-9s}
+  @keyframes float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(0,-30px) scale(1.08)}}
+  .hero .wrap{position:relative;z-index:1}
+  .hero h1{font-size:clamp(2.3rem,8.5vw,5rem);font-weight:900;line-height:1.08;letter-spacing:-.02em;
+    animation:rise .9s cubic-bezier(.2,.7,.2,1) both}
+  .hero .sub{margin-top:18px;font-size:clamp(1.05rem,3.4vw,1.5rem);color:var(--ink);font-weight:600;
+    animation:rise .9s .15s cubic-bezier(.2,.7,.2,1) both}
+  .hero .sub2{margin-top:10px;font-size:clamp(.92rem,2.6vw,1.05rem);color:var(--sub);
+    animation:rise .9s .3s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+  .scrollcue{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:1;
+    color:var(--sub);font-size:.78rem;letter-spacing:.1em;text-align:center;animation:bob 1.8s ease-in-out infinite}
+  .scrollcue span{display:block;font-size:1.4rem;line-height:1}
+  @keyframes bob{0%,100%{transform:translate(-50%,0)}50%{transform:translate(-50%,8px)}}
+
+  /* ===== カード／グリッド ===== */
+  .grid{display:grid;gap:clamp(14px,2.5vw,20px);margin-top:30px}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(18px,3vw,26px);
+    transition:transform .3s ease,border-color .3s ease,box-shadow .3s ease;position:relative;overflow:hidden}
+  .card:hover{transform:translateY(-6px);border-color:var(--pur);box-shadow:0 18px 40px -20px var(--pur)}
+  .card .ico{font-size:2rem;line-height:1;margin-bottom:12px;display:block}
+  .card h3{font-size:1.12rem}
+  .card p{font-size:.96rem;color:var(--sub);margin-top:6px}
+  .num{font-size:.8rem;font-weight:800;color:var(--pink);letter-spacing:.1em}
+
+  /* ===== 対比図（Part1） ===== */
+  .versus{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:clamp(10px,2vw,20px);margin-top:30px}
+  .vbox{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(18px,3vw,28px);text-align:center}
+  .vbox.hot{border-color:var(--pink);background:linear-gradient(160deg,var(--card2),#241634)}
+  .vbox .big{font-size:2.4rem;margin-bottom:8px}
+  .vbox h3{font-size:1.1rem}
+  .vbox p{font-size:.92rem;color:var(--sub);margin-top:6px}
+  .varrow{font-size:1.8rem;color:var(--pur);font-weight:900}
+
+  /* ===== 4要素（Part2） ===== */
+  .pill{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:16px 18px}
+  .pill .e{font-size:1.7rem}
+  .pill b{font-size:1.05rem}
+  .pill span{display:block;color:var(--sub);font-size:.9rem;margin-top:2px}
+
+  /* ===== 組織図（Part3） ===== */
+  .org{margin-top:34px;text-align:center}
+  .node{display:inline-block;border-radius:14px;padding:12px 22px;font-weight:800;font-size:1.02rem}
+  .node.you{background:#fff;color:#1a1030}
+  .node.hub{background:linear-gradient(95deg,var(--pur),var(--pink));color:#fff;font-size:1.1rem;
+    box-shadow:0 0 0 6px rgba(168,85,247,.18)}
+  .node.hub small{display:block;font-size:.72rem;font-weight:700;opacity:.9;letter-spacing:.08em}
+  .connector{width:2px;height:30px;margin:8px auto;background:linear-gradient(var(--pur),var(--line))}
+  .depts{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}
+  .dept{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 10px;
+    transition:transform .3s,border-color .3s}
+  .dept:hover{transform:translateY(-4px);border-color:var(--pink)}
+  .dept .e{font-size:1.5rem;display:block;margin-bottom:4px}
+  .dept b{font-size:.98rem;display:block}
+  .dept span{font-size:.8rem;color:var(--sub)}
+
+  /* ===== チェックリスト（Part4） ===== */
+  .check{margin-top:30px;max-width:560px}
+  .check li{list-style:none;display:flex;align-items:center;gap:14px;background:var(--card);
+    border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:12px;
+    font-size:1.05rem;font-weight:600;transition:.5s}
+  .check li .mk{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto;
+    display:grid;place-items:center;font-size:.9rem;color:transparent;transition:.4s}
+  .check li.checked{border-color:var(--pur);background:var(--card2)}
+  .check li.checked .mk{background:linear-gradient(95deg,var(--pur),var(--pink));border-color:transparent;color:#fff}
+  .gate{margin-top:6px;text-align:center;font-weight:800;font-size:1.1rem;padding:16px;border-radius:14px;
+    border:1px dashed var(--line);color:var(--sub);transition:.5s}
+  .gate.open{border-color:var(--cyan);color:#fff;background:linear-gradient(95deg,rgba(34,211,238,.12),rgba(168,85,247,.12))}
+
+  /* ===== 数値（メリット） ===== */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:30px 0}
+  .stat{text-align:center;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px 10px}
+  .stat .v{font-size:clamp(2rem,7vw,3rem);font-weight:900;line-height:1}
+  .stat .l{font-size:.86rem;color:var(--sub);margin-top:8px}
+  .bullets{margin-top:20px;display:grid;gap:12px}
+  .bullets li{list-style:none;display:flex;gap:12px;align-items:flex-start;font-size:1.05rem}
+  .bullets li::before{content:"✦";color:var(--pink);font-weight:900;margin-top:2px}
+
+  /* ===== ステップ（始め方） ===== */
+  .steps{counter-reset:s;display:grid;gap:16px;margin-top:30px}
+  .step{display:flex;gap:18px;align-items:flex-start;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:20px 22px}
+  .step::before{counter-increment:s;content:counter(s);flex:0 0 auto;width:44px;height:44px;border-radius:50%;
+    display:grid;place-items:center;font-weight:900;font-size:1.3rem;color:#fff;
+    background:linear-gradient(95deg,var(--pur),var(--pink))}
+  .step h3{font-size:1.1rem}
+  .step p{font-size:.95rem;color:var(--sub);margin-top:2px}
+
+  /* ===== まとめ CTA ===== */
+  .cta{text-align:center;background:linear-gradient(160deg,var(--bg2),#1b1330);
+    border:1px solid var(--line);border-radius:26px;padding:clamp(34px,7vw,64px) clamp(20px,5vw,50px);margin-top:10px}
+  .cta h2{font-size:clamp(1.7rem,6vw,3rem)}
+  .cta p{color:var(--sub);margin-top:14px;max-width:34em;margin-left:auto;margin-right:auto}
+
+  /* ===== 発表者メモ ===== */
+  .note{display:none;margin-top:22px;border-left:4px solid var(--pur);background:rgba(168,85,247,.08);
+    border-radius:0 12px 12px 0;padding:14px 18px;font-size:.95rem;color:#d9d2f0}
+  .note b{color:var(--pink)}
+  body.notes .note{display:block;animation:rise .4s ease both}
+
+  footer{border-top:1px solid var(--line);padding:34px 0;text-align:center;color:var(--sub);font-size:.85rem}
+
+  /* ===== レスポンシブ ===== */
+  @media(max-width:760px){
+    .g3,.stats,.depts{grid-template-columns:1fr 1fr}
+    .versus{grid-template-columns:1fr;text-align:center}
+    .varrow{transform:rotate(90deg);margin:2px auto}
+    .g2{grid-template-columns:1fr}
+  }
+  @media(max-width:460px){
+    .g3,.stats,.depts{grid-template-columns:1fr}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+    .reveal,.stagger>*{opacity:1!important;transform:none!important}
+  }
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<header>
+  <div class="ttl"><b class="grad">ハーネスエンジニアリング</b> 入門</div>
+  <button class="notebtn" id="noteToggle">🎤 発表者メモ：OFF</button>
+</header>
+
+<!-- ===== ヒーロー ===== -->
+<section class="hero">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="wrap">
+    <h1>AIに<span class="grad">「会社」</span>を<br>やらせる。</h1>
+    <p class="sub">Claude Code で作る、自分専用のチーム</p>
+    <p class="sub2">非エンジニアのための実践ガイド ／ 2026</p>
+  </div>
+  <div class="scrollcue"><span>↓</span>スクロール</div>
+</section>
+
+<!-- ===== 結論先出し ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">今日の結論（先に言います）</span>
+      <h2>AIを<span class="grad">「会社」に見立てて</span>使っています。</h2>
+      <p class="lead">難しい技術の話ではありません。AIに役割を分けて、品質をチェックさせる。その段取りの工夫の話です。</p>
+    </div>
+    <div class="grid g3 stagger reveal">
+      <div class="card"><span class="ico">🧑‍💼</span><div class="num">01</div><h3>秘書が窓口</h3><p>話しかける相手は一人。秘書が中身を見て、各部署に振り分けます。</p></div>
+      <div class="card"><span class="ico">🏢</span><div class="num">02</div><h3>部署で分担</h3><p>営業・開発・経理…と役割を分けると、話が混ざらず品質が安定します。</p></div>
+      <div class="card"><span class="ico">✅</span><div class="num">03</div><h3>品質管理がチェック</h3><p>出す前に別の係が点検。AIのうっかりを仕組みで止めます。</p></div>
+    </div>
+    <p class="note">🎤 <b>つかみ：</b>「今日はコードの話はしません。AIの“使い方の工夫”の話です」と最初に言って安心させる。この3枚で全体像を見せて、あとで一つずつ分解すると予告する。</p>
+  </div>
+</section>
+
+<!-- ===== Part1 Claude Codeとは ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">Part 1 ／ そもそも</span>
+      <h2>Claude Code って、なに？</h2>
+      <p class="lead">いわゆるチャットAIは「答える」のが仕事。Claude Code は、それに加えて自分で「働き」ます。</p>
+    </div>
+    <div class="versus reveal">
+      <div class="vbox"><div class="big">💬</div><h3>チャットAI</h3><p>質問に<strong>答えてくれる</strong>。会話で終わる。</p></div>
+      <div class="varrow">→</div>
+      <div class="vbox hot"><div class="big">🤖</div><h3>AIエージェント</h3><p>調べて、作って、整理して<strong>成果物を残す</strong>。「働く」AI。</p></div>
+    </div>
+    <div class="grid g3 stagger reveal" style="margin-top:24px">
+      <div class="card"><span class="ico">🗣️</span><h3>指示は会話</h3><p>ふつうの日本語で「整理して」と頼むだけ。</p></div>
+      <div class="card"><span class="ico">📄</span><h3>成果はファイル</h3><p>頼んだ結果がフォルダに残る。消えない・見返せる。</p></div>
+      <div class="card"><span class="ico">🧰</span><h3>コード専用じゃない</h3><p>文章・表・調べもの・資料づくりにも使える。</p></div>
+    </div>
+    <p class="note">🎤 ここが入口。「相談相手」ではなく「作業もする部下」だと伝える。名前にCodeと付くけど文章仕事で十分使える、と強調。</p>
+  </div>
+</section>
+
+<!-- ===== Part2 ハーネス ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">Part 2 ／ 考え方</span>
+      <h2>ハーネス＝AIが働く<span class="grad">「土俵」</span></h2>
+      <p class="lead">同じAIでも、土俵を整えるかどうかで成果が大きく変わります。散らかった机より、道具が定位置にある作業台のほうが速い。この土俵を作り込む工夫を「ハーネスエンジニアリング」と呼んでいます。</p>
+    </div>
+    <div class="grid g2 stagger reveal">
+      <div class="pill"><span class="e">🧑‍💼</span><div><b>① 役割</b><span>誰に何をやらせるか（部署分け）</span></div></div>
+      <div class="pill"><span class="e">📐</span><div><b>② ルール</b><span>どんな作法で動くか（会社規程）</span></div></div>
+      <div class="pill"><span class="e">🧠</span><div><b>③ 記憶</b><span>一度教えたことを覚えておく</span></div></div>
+      <div class="pill"><span class="e">🗂️</span><div><b>④ 置き場所</b><span>成果物をどこに残すか</span></div></div>
+    </div>
+    <p class="note">🎤 「賢いAIを買えば終わり、ではない。使う側の段取りで差がつく」が核心。この4つが、このあとの章とそのまま対応している。</p>
+  </div>
+</section>
+
+<!-- ===== Part3 会社にする ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">Part 3 ／ 核心</span>
+      <h2>AIを<span class="grad">「会社」</span>にする</h2>
+      <p class="lead">何でも一人に頼むと話が混ざります。そこで、役割を持った部署に分けました。人間の会社と同じ発想です。</p>
+    </div>
+    <div class="org reveal">
+      <div class="node you">あなた（オーナー）</div>
+      <div class="connector"></div>
+      <div class="node hub">秘書室<small>窓口・常設</small></div>
+      <div class="connector"></div>
+      <div class="depts stagger reveal">
+        <div class="dept"><span class="e">🤝</span><b>営業</b><span>顧客・提案</span></div>
+        <div class="dept"><span class="e">⚙️</span><b>開発</b><span>設計・記録</span></div>
+        <div class="dept"><span class="e">📣</span><b>マーケ</b><span>発信・企画</span></div>
+        <div class="dept"><span class="e">💰</span><b>経理</b><span>売上・経費</span></div>
+        <div class="dept"><span class="e">✅</span><b>品質管理</b><span>チェック</span></div>
+        <div class="dept"><span class="e">🎨</span><b>クリエイティブ</b><span>デザイン</span></div>
+      </div>
+    </div>
+    <div class="grid g3 stagger reveal" style="margin-top:34px">
+      <div class="card"><span class="ico">🎯</span><h3>混ざらない</h3><p>一つの話題に集中できる。</p></div>
+      <div class="card"><span class="ico">📝</span><h3>作法を持てる</h3><p>部署ごとに口調・書式・手順を決められる。</p></div>
+      <div class="card"><span class="ico">🔁</span><h3>再現できる</h3><p>同じ頼み方なら、同じ品質で返ってくる。</p></div>
+    </div>
+    <p class="note">🎤 「受付に言えば社内で回してくれる」体験。最初は秘書だけで、仕事が増えたら部署が生える、と成長する点を見せる。</p>
+  </div>
+</section>
+
+<!-- ===== Part4 QA ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">Part 4 ／ 品質管理</span>
+      <h2>出す前に、<span class="grad">必ずチェック</span>させる</h2>
+      <p class="lead">AIは、もっともらしく事実を間違えることがあります。だから「作る係」と「見る係」を分けます。チェックリストを通らないものは出しません。これを「ゲート」と呼んでいます。</p>
+    </div>
+    <ul class="check reveal" id="checklist">
+      <li><span class="mk">✓</span>リンクは開くか</li>
+      <li><span class="mk">✓</span>字数は適切か</li>
+      <li><span class="mk">✓</span>事実は確認したか</li>
+    </ul>
+    <div class="gate reveal" id="gate">⛔ チェック中…</div>
+    <p class="note">🎤 「AIは賢いけど、たまに自信満々で間違える」を正直に言う。隠さない方が信頼される。発信前チェックで事実誤りを止めた、など具体例を一つ用意しておく。</p>
+  </div>
+</section>
+
+<!-- ===== Part5 仕組み3つ ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">Part 5 ／ 忘れさせない</span>
+      <h2>整えた土俵を<span class="grad">維持する</span>3つ</h2>
+    </div>
+    <div class="grid g3 stagger reveal">
+      <div class="card"><span class="ico">📜</span><h3>CLAUDE.md</h3><p>毎回読み込ませる常設ルール。「一人称は私」「日本語で」など、就業規則を渡すイメージ。</p></div>
+      <div class="card"><span class="ico">🧠</span><h3>記憶（メモリ）</h3><p>一度教えたコツや失敗を次回も覚えている。失敗も資産になる。</p></div>
+      <div class="card"><span class="ico">🗒️</span><h3>自動記録</h3><p>決めたこと・気づき・思いつきを、頼まなくても残す。あとで効く。</p></div>
+    </div>
+    <p class="note">🎤 「教えるほど賢くなる。育てる感覚」。続けるほど効く点を推す。忙しい人ほど自動記録が刺さる。</p>
+  </div>
+</section>
+
+<!-- ===== Part6 メリット ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">Part 6 ／ 何が良かったか</span>
+      <h2>続けて、<span class="grad">実際に効いた</span>ところ</h2>
+    </div>
+    <div class="stats reveal stagger">
+      <div class="stat"><div class="v grad" data-count="7" data-suffix="">0</div><div class="l">役割で分けた部署</div></div>
+      <div class="stat"><div class="v grad" data-count="1" data-suffix="人">0</div><div class="l">動かす人数</div></div>
+      <div class="stat"><div class="v grad" data-count="0" data-suffix="円" data-text="積み上げ">∞</div><div class="l">続けるほど積み上がる</div></div>
+    </div>
+    <ul class="bullets reveal stagger">
+      <li><b>再現できる</b>　― 同じ頼み方で、同じ品質。</li>
+      <li><b>使い回せる</b>　― ルールも手順も、次の仕事に流用できる。</li>
+      <li><b>属人化しない</b>　― 自分の頭の中だけに溜めない。</li>
+      <li><b>積み上がる</b>　― 記録と記憶で、続けるほど強くなる。</li>
+      <li><b>壁打ち相手になる</b>　― 一人作業でも相談できる。</li>
+      <li><b>本業も副業も同じ仕組み</b>で回せる。</li>
+    </ul>
+    <p class="note">🎤 大谷さんの価値観（再現可能・再利用可能）と直結する章。ここは熱を込めて話す。</p>
+  </div>
+</section>
+
+<!-- ===== 実例 ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">実例ツアー</span>
+      <h2>同じ<span class="grad">「会社」</span>の上で動いている</h2>
+    </div>
+    <div class="grid g3 stagger reveal">
+      <div class="card"><span class="ico">🗺️</span><h3>本業</h3><p>外回り営業のリサーチや顧客情報を、台帳の形で整理。</p></div>
+      <div class="card"><span class="ico">✍️</span><h3>副業</h3><p>電子書籍やSNSの制作・発信を、企画から記録まで一括管理。</p></div>
+      <div class="card"><span class="ico">📊</span><h3>見える化</h3><p>全体をダッシュボードで一望できるようにした。</p></div>
+    </div>
+    <p class="note">🎤 具体の固有名はこの場で口頭で補足する。資料には細かく書かない（人に見せる前提で機微を出しすぎない）。</p>
+  </div>
+</section>
+
+<!-- ===== 始め方 ===== -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <span class="kicker">やってみよう</span>
+      <h2>始め方は<span class="grad">3ステップ</span></h2>
+    </div>
+    <div class="steps stagger reveal">
+      <div class="step"><div><h3>Claude Code を入れる</h3><p>パソコンに導入する。最初はこれだけ。</p></div></div>
+      <div class="step"><div><h3>「/company」で秘書を作る</h3><p>最初のいくつかの質問に答えるだけ。</p></div></div>
+      <div class="step"><div><h3>あとは話しかける</h3><p>仕事が増えたら、部署が自然に生えていく。</p></div></div>
+    </div>
+    <p class="note">🎤 手順を読み上げない。「難しくない、一緒にやれば30分」と背中を押す。その場で画面を開けると最高。</p>
+  </div>
+</section>
+
+<!-- ===== まとめ CTA ===== -->
+<section>
+  <div class="wrap">
+    <div class="cta reveal">
+      <h2>AIは<span class="grad">「優秀な新人の集団」</span></h2>
+      <p>土俵を整え、役割を与え、品質を見る。これだけで、一人でも会社のように仕事が回ります。特別な才能ではなく、誰でも作れる仕組みです。</p>
+      <p style="margin-top:22px;font-weight:800;color:var(--ink);font-size:1.15rem">― そのまま画面を開いて、秘書づくりから始めてみませんか。</p>
+    </div>
+    <p class="note">🎤 締め：「特別な才能ではなく、誰でも作れる仕組みです」と言って終える。質問を歓迎する空気で。</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">ハーネスエンジニアリング入門 ／ AIに「会社」をやらせる<br>
+  右上の「🎤 発表者メモ」を押すと、各セクションに話すヒントが表示されます。</div>
+</footer>
+
+<script>
+  // 進捗バー
+  var bar=document.getElementById('bar');
+  function onScroll(){
+    var h=document.documentElement;
+    var p=h.scrollTop/(h.scrollHeight-h.clientHeight);
+    bar.style.width=(p*100)+'%';
+  }
+  document.addEventListener('scroll',onScroll,{passive:true}); onScroll();
+
+  // 発表者メモ トグル
+  var btn=document.getElementById('noteToggle');
+  btn.addEventListener('click',function(){
+    var on=document.body.classList.toggle('notes');
+    btn.textContent='🎤 発表者メモ：'+(on?'ON':'OFF');
+  });
+
+  // スクロールリビール
+  var io=new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(e.isIntersecting){
+        e.target.classList.add('in');
+        if(e.target.dataset.run==='check') runCheck(e.target);
+        if(e.target.querySelector) countUp(e.target);
+        io.unobserve(e.target);
+      }
+    });
+  },{threshold:.18});
+  document.querySelectorAll('.reveal').forEach(function(el){io.observe(el)});
+
+  // チェックリスト演出
+  var clist=document.getElementById('checklist'); if(clist) clist.dataset.run='check';
+  function runCheck(){
+    var items=clist.querySelectorAll('li');
+    items.forEach(function(li,i){ setTimeout(function(){li.classList.add('checked')}, 350+i*450); });
+    var gate=document.getElementById('gate');
+    setTimeout(function(){gate.classList.add('open');gate.textContent='✅ 通過 → 公開OK';}, 350+items.length*450+250);
+  }
+
+  // 数値カウントアップ
+  function countUp(scope){
+    scope.querySelectorAll('[data-count]').forEach(function(el){
+      if(el.dataset.done) return; el.dataset.done='1';
+      var end=parseInt(el.dataset.count,10), suf=el.dataset.suffix||'', txt=el.dataset.text;
+      if(end===0){ if(txt){el.textContent='∞';} return; }
+      var t0=null, dur=1100;
+      function step(ts){ if(!t0)t0=ts; var k=Math.min((ts-t0)/dur,1);
+        el.textContent=Math.round(end*(1-Math.pow(1-k,3)))+suf; if(k<1)requestAnimationFrame(step); }
+      requestAnimationFrame(step);
+    });
+  }
+</script>
+</body>
+</html>
